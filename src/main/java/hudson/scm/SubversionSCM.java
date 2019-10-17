@@ -29,12 +29,12 @@ package hudson.scm;
 import static hudson.Util.fixEmptyAndTrim;
 import static hudson.scm.PollingResult.BUILD_NOW;
 import static hudson.scm.PollingResult.NO_CHANGES;
-import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.WARNING;
 
 import com.cloudbees.jenkins.plugins.sshcredentials.SSHUserPrivateKey;
 import com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey;
 import com.cloudbees.plugins.credentials.Credentials;
+import com.cloudbees.plugins.credentials.CredentialsMatcher;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsNameProvider;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
@@ -202,6 +202,10 @@ import org.kohsuke.stapler.interceptor.RequirePOST;
  */
 @SuppressWarnings("rawtypes")
 public class SubversionSCM extends SCM implements Serializable {
+    private static CredentialsMatcher logMatcher(CredentialsMatcher matcher) {
+        LOGGER.log(WARNING, "CredentialsMatcher: {0}", new Object[] { CredentialsMatchers.describe(matcher) });
+        return matcher;
+    }
     /**
      * the locations field is used to store all configured SVN locations (with
      * their local and remote part). Direct access to this field should be
@@ -716,6 +720,7 @@ public class SubversionSCM extends SCM implements Serializable {
                 if(rev!=null) {
                     env.put("SVN_REVISION",rev.toString());
                     env.put("SVN_URL",url);
+                    LOGGER.log(WARNING, "SVN_REVISION: {0}; SVN_URL: {1}", new Object[] {rev.toString(), url});
                 } else if (!knownURLs.isEmpty()) {
                     LOGGER.log(WARNING, "no revision found corresponding to {0}; known: {1}", new Object[] {url, knownURLs});
                 }
@@ -727,6 +732,7 @@ public class SubversionSCM extends SCM implements Serializable {
                 if(rev!=null) {
                     env.put("SVN_REVISION_"+(i+1),rev.toString());
                     env.put("SVN_URL_"+(i+1),url);
+                    LOGGER.log(WARNING, "SVN_REVISION_{0}: {1}; SVN_URL_{0}: {2}", new Object[] {i+1, rev.toString(), url});
                 } else if (!knownURLs.isEmpty()) {
                     LOGGER.log(WARNING, "no revision found corresponding to {0}; known: {1}", new Object[] {url, knownURLs});
                 }
@@ -1051,7 +1057,7 @@ public class SubversionSCM extends SCM implements Serializable {
                 }
             } catch (SVNAuthenticationException e) {
                 // if we don't have access to '/', ignore. error
-                LOGGER.log(Level.FINE,"Failed to estimate the remote time stamp",e);
+                LOGGER.log(Level.WARNING,"Failed to estimate the remote time stamp",e);
             } catch (SVNException e) {
                 LOGGER.log(Level.INFO,"Failed to estimate the remote time stamp",e);
             }
@@ -1739,6 +1745,7 @@ public class SubversionSCM extends SCM implements Serializable {
                 return credential;
             }
             credential = legacyCredential.toCredentials(legacyRealm);
+            LOGGER.log(WARNING, "migrateCredentials(...)");
             if (store.isDomainsModifiable()) {
                 Matcher matcher = Pattern.compile("\\s*<([^>]+)>.*").matcher(legacyRealm);
                 if (matcher.matches()) {
@@ -1985,6 +1992,7 @@ public class SubversionSCM extends SCM implements Serializable {
 
             @Override
             public StandardCredentials toCredentials(String description) throws IOException {
+                LOGGER.log(WARNING, "toCredentials({0})", new Object[] {description});
                 try {
                     return new BasicSSHUserPrivateKey(CredentialsScope.GLOBAL, null, userName,
                             new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(
@@ -2002,6 +2010,7 @@ public class SubversionSCM extends SCM implements Serializable {
             @Override
             public StandardCredentials toCredentials(ModelObject context, String description) throws IOException {
                 String key = FileUtils.readFileToString(getKeyFile(), "iso-8859-1");
+                LOGGER.log(WARNING, "toCredentials({0}) key: {1}", new Object[] {description, key});
                 for (SSHUserPrivateKey c : CredentialsProvider.lookupCredentials(
                         SSHUserPrivateKey.class,
                         findItemGroup(context),
@@ -2123,11 +2132,11 @@ public class SubversionSCM extends SCM implements Serializable {
                 for (SubversionCredentialProvider p : SubversionCredentialProvider.all()) {
                     Credential c = p.getCredential(url,realm);
                     if(c!=null) {
-                        LOGGER.fine(String.format("getCredential(%s)=>%s by %s",realm,c,p));
+                        LOGGER.log(WARNING, String.format("getCredential(%s)=>%s by %s",realm,c,p));
                         return c;
                     }
                 }
-                LOGGER.fine(String.format("getCredential(%s)=>%s",realm,credentials.get(realm)));
+                LOGGER.log(WARNING, String.format("getCredential(%s)=>%s",realm,credentials.get(realm)));
                 return credentials.get(realm);
             }
 
@@ -2355,8 +2364,8 @@ public class SubversionSCM extends SCM implements Serializable {
                 String repoPath = getRelativePath(repoURL, repository);
                 return repository.checkPath(repoPath, rev);
             } catch (SVNException e) {
-                if (LOGGER.isLoggable(Level.FINE)) {
-                    LogRecord lr = new LogRecord(Level.FINE,
+                if (LOGGER.isLoggable(Level.WARNING)) {
+                    LogRecord lr = new LogRecord(Level.WARNING,
                             "Could not check repository path {0} using credentials {1} ({2})");
                     lr.setThrown(e);
                     lr.setParameters(new Object[]{
@@ -2604,7 +2613,7 @@ public class SubversionSCM extends SCM implements Serializable {
                     ParametersAction params = build.getAction(ParametersAction.class);
                     if (params != null) {
                         // since this is used to disable projects, be conservative
-                        LOGGER.fine("Location could be expanded on build '" + build
+                        LOGGER.log(WARNING, "Location could be expanded on build '" + build
                                 + "' parameters values:");
                         return false;
                     }
@@ -2613,7 +2622,7 @@ public class SubversionSCM extends SCM implements Serializable {
             } catch (SVNException e) {
                 // be conservative, since we are just trying to be helpful in detecting
                 // non existent locations. If we can't detect that, we'll do nothing
-                LOGGER.log(FINE, "Location check failed",e);
+                LOGGER.log(WARNING, "Location check failed",e);
             }
         return false;
     }
@@ -2820,7 +2829,7 @@ public class SubversionSCM extends SCM implements Serializable {
          */
         public UUID getUUID(Job context, SCM scm) throws SVNException {
             if(repositoryUUID==null || repositoryRoot==null) {
-                LOGGER.fine("UUID of " + remote + " not cached for " + context);
+                LOGGER.log(WARNING, "UUID of " + remote + " not cached for " + context);
                 synchronized (this) {
                     // don't keep connections open for further use to prevent having too many open at the same time.
                     SVNRepository r = openRepository(context, scm, false);
@@ -2853,6 +2862,7 @@ public class SubversionSCM extends SCM implements Serializable {
 
             StandardCredentials creds = lookupCredentials(context, credentialsId, repoURL);
             Map<String, Credentials> additional = new HashMap<String, Credentials>();
+            LOGGER.log(WARNING, "openRepository(...)");
             if (creds == null) {
                 // we should add additional credentials, this looks like it's going to be an external
                 // TODO only necessary with externals, or can we always do this?
@@ -2863,10 +2873,10 @@ public class SubversionSCM extends SCM implements Serializable {
                         StandardCredentials cred = CredentialsMatchers
                                 .firstOrNull(CredentialsProvider.lookupCredentials(StandardCredentials.class, context,
                                         ACL.SYSTEM, Collections.<DomainRequirement>emptyList()),
-                                        CredentialsMatchers.allOf(CredentialsMatchers.withId(credentialsId),
+                                        logMatcher(CredentialsMatchers.allOf(CredentialsMatchers.withId(credentialsId),
                                                 CredentialsMatchers.anyOf(CredentialsMatchers.instanceOf(
                                                         StandardCredentials.class), CredentialsMatchers.instanceOf(
-                                                        SSHUserPrivateKey.class))));
+                                                        SSHUserPrivateKey.class)))));
                         if (cred != null) {
                             additional.put(c.getRealm(), cred);
                         }
@@ -3138,6 +3148,7 @@ public class SubversionSCM extends SCM implements Serializable {
             }
 
             public ListBoxModel fillCredentialsIdItems(@CheckForNull Item context, String remote) {
+                LOGGER.log(WARNING, "fillCredentialsIdItems({0})", new Object[] {remote});
                 List<DomainRequirement> domainRequirements;
                 if (remote == null) {
                     domainRequirements = Collections.<DomainRequirement>emptyList();
@@ -3147,11 +3158,11 @@ public class SubversionSCM extends SCM implements Serializable {
                 return new StandardListBoxModel()
                         .withEmptySelection()
                         .withMatching(
-                                CredentialsMatchers.anyOf(
+                                logMatcher(CredentialsMatchers.anyOf(
                                         CredentialsMatchers.instanceOf(StandardUsernamePasswordCredentials.class),
                                         CredentialsMatchers.instanceOf(StandardCertificateCredentials.class),
                                         CredentialsMatchers.instanceOf(SSHUserPrivateKey.class)
-                                ),
+                                )),
                                 CredentialsProvider.lookupCredentials(StandardCredentials.class,
                                         context,
                                         ACL.SYSTEM,
@@ -3164,9 +3175,10 @@ public class SubversionSCM extends SCM implements Serializable {
              */
             public FormValidation doCheckRemote(/* TODO unused, delete */StaplerRequest req, @AncestorInPath Item context,
                     @QueryParameter String remote) {
-
+                LOGGER.log(WARNING, "doCheckRemote({0})", new Object[] {remote});
                 // repository URL is required
                 String url = Util.fixEmptyAndTrim(remote);
+                LOGGER.log(WARNING, "doCheckRemote(...); url: {0}", new Object[] {url});
                 if (url == null) {
                     return FormValidation.error(Messages.SubversionSCM_doCheckRemote_required());
                 }
@@ -3192,7 +3204,7 @@ public class SubversionSCM extends SCM implements Serializable {
             @RequirePOST
             public FormValidation doCheckCredentialsId(StaplerRequest req, @AncestorInPath Item context,
                     @QueryParameter String remote, @QueryParameter String value) {
-
+                LOGGER.log(WARNING, "doCheckCredentialsId({0}, {1})", new Object[] {remote, value});
                 // Test the connection only if we may use the credentials (cf. hudson.plugins.git.UserRemoteConfig.DescriptorImpl.doCheckUrl)
                 if (context == null && !Jenkins.getActiveInstance().hasPermission(Jenkins.ADMINISTER) ||
                     context != null && !context.hasPermission(CredentialsProvider.USE_ITEM)) {
@@ -3205,7 +3217,7 @@ public class SubversionSCM extends SCM implements Serializable {
              * Validate the value for a remote (repository) location.
              */
             public FormValidation checkCredentialsId(/* TODO unused, delete */StaplerRequest req, @Nonnull Item context, String remote, String value) {
-
+                LOGGER.log(WARNING, "checkCredentialsId({0}, {1})", new Object[] {remote, value}); 
                 // Ignore validation if repository URL is empty
                 String url = Util.fixEmptyAndTrim(remote);
                 if (url == null) {
@@ -3219,18 +3231,21 @@ public class SubversionSCM extends SCM implements Serializable {
 
                 try {
                     SVNURL repoURL = SVNURL.parseURIEncoded(remote);
+
                     StandardCredentials credentials = lookupCredentials(context, value, repoURL);
+                    LOGGER.log(WARNING, "checkCredentialsId(...) credentials.description: {0}", new Object[] { credentials != null ? credentials.getDescription()  : "credentials: null" });
                     SVNRepository repo = descriptor().getRepository(context, repoURL, credentials, Collections
                             .<String, Credentials>emptyMap(), null);
                     String repoRoot = repo.getRepositoryRoot(true).toDecodedString();
                     String repoPath = repo.getLocation().toDecodedString().substring(repoRoot.length());
+                    LOGGER.log(WARNING, "checkCredentialsId(...) repoRoot: {0} repoPath: {1}", new Object[] { repoRoot, repoPath });
                     SVNPath path = new SVNPath(repoPath, true, true);
                     SVNNodeKind svnNodeKind = repo.checkPath(path.getTarget(), path.getPegRevision().getNumber());
                     if (svnNodeKind != SVNNodeKind.DIR) {
                         return FormValidation.error("Credentials looks fine but the repository URL is invalid");
                     }
                 } catch (SVNException e) {
-                    LOGGER.log(Level.SEVERE, e.getErrorMessage().getMessage());
+                    LOGGER.log(Level.SEVERE, e.getErrorMessage().getMessage(), e);
                     return FormValidation.error("Unable to access the repository");
                 }
                 return FormValidation.ok();
@@ -3285,7 +3300,7 @@ public class SubversionSCM extends SCM implements Serializable {
      * Intended to be invoked from Groovy console.
      */
     public static void enableSshDebug(Level level) {
-        if(level==null)     level= Level.FINEST; // default
+        if(level==null)     level= Level.WARNING; // default
 
         final Level lv = level;
 
@@ -3349,11 +3364,12 @@ public class SubversionSCM extends SCM implements Serializable {
     }
 
     private static StandardCredentials lookupCredentials(Item context, String credentialsId, SVNURL repoURL) {
+        LOGGER.log(WARNING, "lookupCredentials({0})", new Object[] {credentialsId}); 
         return credentialsId == null ? null :
                 CredentialsMatchers.firstOrNull(CredentialsProvider
                         .lookupCredentials(StandardCredentials.class, context, ACL.SYSTEM,
                                 URIRequirementBuilder.fromUri(repoURL.toString()).build()),
-                        CredentialsMatchers.withId(credentialsId));
+                        logMatcher(CredentialsMatchers.withId(credentialsId)));
     }
 
     public static class AdditionalCredentials extends AbstractDescribableImpl<AdditionalCredentials> {
@@ -3436,11 +3452,11 @@ public class SubversionSCM extends SCM implements Serializable {
                 return new StandardListBoxModel()
                         .withEmptySelection()
                         .withMatching(
-                                CredentialsMatchers.anyOf(
+                                logMatcher(CredentialsMatchers.anyOf(
                                         CredentialsMatchers.instanceOf(StandardUsernamePasswordCredentials.class),
                                         CredentialsMatchers.instanceOf(StandardCertificateCredentials.class),
                                         CredentialsMatchers.instanceOf(SSHUserPrivateKey.class)
-                                ),
+                                )),
                                 CredentialsProvider.lookupCredentials(StandardCredentials.class,
                                         context,
                                         ACL.SYSTEM,
